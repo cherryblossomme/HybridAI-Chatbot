@@ -1,4 +1,17 @@
 // ==========================================
+// CHAT SEARCH ELEMENTS
+// ==========================================
+
+const chatSearchInput =
+    document.getElementById(
+        "chat-search-input"
+    );
+
+const chatSearchClear =
+    document.getElementById(
+        "chat-search-clear"
+    );
+// ==========================================
 // DOM ELEMENTS
 // ==========================================
 
@@ -7,6 +20,9 @@ const chatBox =
 
 const userInput =
     document.getElementById("user-input");
+
+    const exportChatButton =
+    document.getElementById("export-chat-button");
 
 const sendButton =
     document.getElementById("send-button");
@@ -44,7 +60,241 @@ const closeSettings =
 const darkModeToggle =
     document.getElementById("dark-mode-toggle");
 
+// ==========================================
+// MARKDOWN RENDERER
+// ==========================================
 
+function escapeHTML(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+function renderMarkdown(text) {
+
+    if (!text) {
+        return "";
+    }
+
+    let html = escapeHTML(String(text));
+
+    // --------------------------------------
+    // Code blocks
+    // --------------------------------------
+
+    const codeBlocks = [];
+
+    html = html.replace(
+        /```(\w*)\n?([\s\S]*?)```/g,
+        function (match, language, code) {
+
+            const index =
+                codeBlocks.length;
+
+            codeBlocks.push({
+                language:
+                    language || "code",
+                code:
+                    code.trim()
+            });
+
+            return `@@CODE_BLOCK_${index}@@`;
+        }
+    );
+
+
+    // --------------------------------------
+    // Inline code
+    // --------------------------------------
+
+    html = html.replace(
+        /`([^`\n]+)`/g,
+        "<code class=\"inline-code\">$1</code>"
+    );
+
+
+    // --------------------------------------
+    // Bold
+    // --------------------------------------
+
+    html = html.replace(
+        /\*\*(.*?)\*\*/g,
+        "<strong>$1</strong>"
+    );
+
+
+    // --------------------------------------
+    // Italic
+    // --------------------------------------
+
+    html = html.replace(
+        /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
+        "<em>$1</em>"
+    );
+
+
+    // --------------------------------------
+    // Headings
+    // --------------------------------------
+
+    html = html.replace(
+        /^### (.*)$/gm,
+        "<h4>$1</h4>"
+    );
+
+    html = html.replace(
+        /^## (.*)$/gm,
+        "<h3>$1</h3>"
+    );
+
+    html = html.replace(
+        /^# (.*)$/gm,
+        "<h2>$1</h2>"
+    );
+
+
+    // --------------------------------------
+    // Bullet lists
+    // --------------------------------------
+
+    html = html.replace(
+        /^[*-] (.*)$/gm,
+        "<li>$1</li>"
+    );
+
+    html = html.replace(
+        /(<li>.*<\/li>)/gs,
+        "<ul>$1</ul>"
+    );
+
+
+    // --------------------------------------
+    // Numbered lists
+    // --------------------------------------
+
+    html = html.replace(
+        /^\d+\. (.*)$/gm,
+        "<li>$1</li>"
+    );
+
+
+    // --------------------------------------
+    // Line breaks
+    // --------------------------------------
+
+    html = html.replace(
+        /\n/g,
+        "<br>"
+    );
+
+
+    // --------------------------------------
+    // Restore code blocks
+    // --------------------------------------
+
+    codeBlocks.forEach(
+        function (block, index) {
+
+            const safeCode =
+                escapeHTML(block.code);
+
+            const codeHTML = `
+                <div class="code-block">
+
+                    <div class="code-header">
+
+                        <span class="code-language">
+                            ${escapeHTML(block.language)}
+                        </span>
+
+                        <button
+                            class="copy-code-button"
+                            type="button"
+                            onclick="copyCode(this)"
+                        >
+                            📋 Copy
+                        </button>
+
+                    </div>
+
+                    <pre><code>${safeCode}</code></pre>
+
+                </div>
+            `;
+
+            html = html.replace(
+                `@@CODE_BLOCK_${index}@@`,
+                codeHTML
+            );
+        }
+    );
+
+
+    return html;
+}
+
+
+// ==========================================
+// COPY CODE
+// ==========================================
+
+async function copyCode(button) {
+
+    const codeBlock =
+        button
+            .closest(".code-block")
+            .querySelector("code");
+
+    if (!codeBlock) {
+        return;
+    }
+
+    const code =
+        codeBlock.innerText;
+
+    try {
+
+        await navigator.clipboard.writeText(
+            code
+        );
+
+        const originalText =
+            button.innerHTML;
+
+        button.innerHTML =
+            "✓ Copied";
+
+        setTimeout(
+            function () {
+                button.innerHTML =
+                    originalText;
+            },
+            1500
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Copy failed:",
+            error
+        );
+
+        button.innerHTML =
+            "❌ Failed";
+
+        setTimeout(
+            function () {
+                button.innerHTML =
+                    "📋 Copy";
+            },
+            1500
+        );
+    }
+}
 // ==========================================
 // STORAGE KEYS
 // ==========================================
@@ -463,15 +713,29 @@ function addMessage(
     );
 
 
-    messageContent.textContent =
-        message;
-
+if (sender === "user") {
+    messageContent.textContent = message;
+} else {
+    messageContent.innerHTML = renderMarkdown(message);
+}
 
     messageElement.appendChild(
         messageContent
     );
 
+// ======================================
+// REGENERATE BUTTON
+// ======================================
 
+if (
+    sender === "bot"
+) {
+
+    addRegenerateButton(
+        messageElement
+    );
+
+}
     // ======================================
     // AI MODE
     // ======================================
@@ -649,6 +913,58 @@ function addBotMessage(
     updateCurrentSession();
 
 }
+// ==========================================
+// ADD REGENERATE BUTTON
+// ==========================================
+
+function addRegenerateButton(
+    messageElement
+) {
+
+    const oldButton =
+        messageElement.querySelector(
+            ".regenerate-button"
+        );
+
+    if (oldButton) {
+        oldButton.remove();
+    }
+
+
+    const button =
+        document.createElement(
+            "button"
+        );
+
+    button.type =
+        "button";
+
+    button.classList.add(
+        "regenerate-button"
+    );
+
+    button.innerHTML =
+        "🔄 Regenerate";
+
+    button.title =
+        "Regenerate this response";
+
+
+    button.addEventListener(
+        "click",
+        function() {
+
+            regenerateLastResponse();
+
+        }
+    );
+
+
+    messageElement.appendChild(
+        button
+    );
+
+}
 
 
 // ==========================================
@@ -751,10 +1067,15 @@ function resizeTextarea() {
 // SEND MESSAGE
 // ==========================================
 
-async function sendMessage() {
+async function sendMessage(
+    regenerateMessage = null,
+    isRegenerate = false
+) {
 
     const message =
-        userInput.value.trim();
+    regenerateMessage !== null
+        ? regenerateMessage
+        : userInput.value.trim();
 
 
     if (!message) {
@@ -782,13 +1103,21 @@ async function sendMessage() {
     // ADD USER MESSAGE
     // ======================================
 
+    if (!isRegenerate) {
+
     addUserMessage(
         message
     );
 
+}
+
+
+    if (!isRegenerate) {
 
     userInput.value =
         "";
+
+}
 
 
     resizeTextarea();
@@ -1067,6 +1396,7 @@ async function sendMessage() {
 
             messageContent.textContent =
                 fullReply;
+                messageContent.innerHTML = renderMarkdown(fullReply);
 
 
             chatBox.scrollTop =
@@ -1843,8 +2173,208 @@ function exportSession(
     );
 
 }
+// ==========================================
+// CHAT SEARCH
+// ==========================================
+
+function searchChats(searchTerm) {
+
+    const term =
+        searchTerm
+            .trim()
+            .toLowerCase();
+
+    const recentChats =
+        document.querySelectorAll(
+            ".recent-chat"
+        );
+
+    let visibleCount = 0;
 
 
+    recentChats.forEach(
+        function(chat) {
+
+            const title =
+                chat
+                    .querySelector(
+                        ".recent-chat-title"
+                    );
+
+            if (!title) {
+                return;
+            }
+
+
+            const chatTitle =
+                title.textContent
+                    .toLowerCase();
+
+
+            // Search title first
+            let matches =
+                chatTitle.includes(term);
+
+
+            // Search any stored chat data
+            if (
+                !matches &&
+                term
+            ) {
+
+                const chatText =
+                    chat.dataset.searchText ||
+                    "";
+
+                matches =
+                    chatText
+                        .toLowerCase()
+                        .includes(term);
+
+            }
+
+
+            if (
+                !term ||
+                matches
+            ) {
+
+                chat.style.display =
+                    "flex";
+
+                visibleCount++;
+
+            } else {
+
+                chat.style.display =
+                    "none";
+
+            }
+
+        }
+    );
+
+
+    updateSearchEmptyState(
+        term,
+        visibleCount
+    );
+
+
+    // Clear button state
+
+    if (
+        chatSearchInput &&
+        chatSearchInput.parentElement
+    ) {
+
+        chatSearchInput.parentElement
+            .classList.toggle(
+                "has-value",
+                Boolean(term)
+            );
+
+    }
+
+}
+// ==========================================
+// SEARCH EMPTY STATE
+// ==========================================
+
+function updateSearchEmptyState(
+    term,
+    visibleCount
+) {
+
+    const recentContainer =
+        document.querySelector(
+            ".recent-chats"
+        );
+
+    if (!recentContainer) {
+        return;
+    }
+
+
+    let emptyMessage =
+        recentContainer.querySelector(
+            ".recent-search-empty"
+        );
+
+
+    if (
+        term &&
+        visibleCount === 0
+    ) {
+
+        if (!emptyMessage) {
+
+            emptyMessage =
+                document.createElement(
+                    "div"
+                );
+
+            emptyMessage.className =
+                "recent-search-empty";
+
+            recentContainer.appendChild(
+                emptyMessage
+            );
+
+        }
+
+        emptyMessage.innerHTML =
+            `🔎 No chats found for
+             <strong>${escapeHTML(term)}</strong>.`;
+
+    } else {
+
+        if (emptyMessage) {
+
+            emptyMessage.remove();
+
+        }
+
+    }
+
+}
+// ==========================================
+// CHAT SEARCH EVENTS
+// ==========================================
+
+if (chatSearchInput) {
+
+    chatSearchInput.addEventListener(
+        "input",
+        function() {
+
+            searchChats(
+                chatSearchInput.value
+            );
+
+        }
+    );
+
+}
+
+
+if (chatSearchClear) {
+
+    chatSearchClear.addEventListener(
+        "click",
+        function() {
+
+            chatSearchInput.value =
+                "";
+
+            searchChats("");
+
+            chatSearchInput.focus();
+
+        }
+    );
+
+}
 // ==========================================
 // RENDER RECENT CHATS
 // ==========================================
@@ -1948,6 +2478,117 @@ function renderRecentChats() {
             actionContainer.classList.add(
                 "recent-chat-actions"
             );
+// ==========================================
+// EXPORT CHAT
+// ==========================================
+
+function exportCurrentChat(format) {
+
+    if (
+        !chatHistory ||
+        chatHistory.length === 0
+    ) {
+        alert("There are no messages to export.");
+        return;
+    }
+
+    let content = "";
+
+    // ------------------------------------------
+    // TXT FORMAT
+    // ------------------------------------------
+
+    if (format === "txt") {
+
+        content =
+            "HybridAI Chat\n" +
+            "==============================\n\n";
+
+        chatHistory.forEach(function(message) {
+
+            const role =
+                message.role === "user"
+                    ? "You"
+                    : "HybridAI";
+
+            content +=
+                role +
+                ":\n" +
+                message.content +
+                "\n\n";
+
+        });
+
+    }
+
+    // ------------------------------------------
+    // MARKDOWN FORMAT
+    // ------------------------------------------
+
+    else if (format === "md") {
+
+        content =
+            "# HybridAI Chat\n\n";
+
+        chatHistory.forEach(function(message) {
+
+            const role =
+                message.role === "user"
+                    ? "You"
+                    : "HybridAI";
+
+            content +=
+                "## " +
+                role +
+                "\n\n";
+
+            content +=
+                message.content +
+                "\n\n";
+
+        });
+
+    }
+
+    // ------------------------------------------
+    // CREATE FILE
+    // ------------------------------------------
+
+    const blob =
+        new Blob(
+            [content],
+            {
+                type:
+                    format === "md"
+                        ? "text/markdown"
+                        : "text/plain"
+            }
+        );
+
+    const url =
+        URL.createObjectURL(blob);
+
+    const link =
+        document.createElement("a");
+
+    link.href = url;
+
+    const date =
+        new Date()
+            .toISOString()
+            .slice(0, 10);
+
+    link.download =
+        `HybridAI-Chat-${date}.${format}`;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+}
 
 
             // ==================================
